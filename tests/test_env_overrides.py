@@ -11,7 +11,7 @@ import tradingagents.default_config as default_config_module
 
 def _reload_with_env(monkeypatch, **overrides):
     """Set/clear env vars then reload default_config to re-evaluate DEFAULT_CONFIG."""
-    for key in list(default_config_module._ENV_OVERRIDES):
+    for key in [*default_config_module._ENV_OVERRIDES, default_config_module._DATA_VENDOR_ENV]:
         monkeypatch.delenv(key, raising=False)
     for key, val in overrides.items():
         monkeypatch.setenv(key, val)
@@ -127,3 +127,33 @@ def test_unknown_env_var_is_ignored(monkeypatch):
         TRADINGAGENTS_NONEXISTENT_KEY="oops",
     )
     assert "nonexistent_key" not in dc.DEFAULT_CONFIG
+
+
+_VENDOR_CATEGORIES = ("core_stock_apis", "technical_indicators", "fundamental_data", "news_data")
+
+
+def test_data_vendor_defaults_to_yfinance(monkeypatch):
+    dc = _reload_with_env(monkeypatch)
+    assert all(dc.DEFAULT_CONFIG["data_vendors"][c] == "yfinance" for c in _VENDOR_CATEGORIES)
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("alpha_vantage", "alpha_vantage"),
+    (" alpha_vantage , yfinance ", "alpha_vantage,yfinance"),
+])
+def test_data_vendor_override_sets_shared_categories(monkeypatch, raw, expected):
+    dc = _reload_with_env(monkeypatch, TRADINGAGENTS_DATA_VENDOR=raw)
+    vendors = dc.DEFAULT_CONFIG["data_vendors"]
+    assert all(vendors[c] == expected for c in _VENDOR_CATEGORIES)
+    # Single-vendor categories are untouched.
+    assert vendors["macro_data"] == "fred"
+    assert vendors["prediction_markets"] == "polymarket"
+
+
+@pytest.mark.parametrize("bad", ["alphavantage", "yfinance,bogus", ","])
+def test_invalid_data_vendor_raises(monkeypatch, bad):
+    monkeypatch.setenv("TRADINGAGENTS_DATA_VENDOR", bad)
+    with pytest.raises(ValueError, match="TRADINGAGENTS_DATA_VENDOR"):
+        importlib.reload(default_config_module)
+    monkeypatch.delenv("TRADINGAGENTS_DATA_VENDOR")
+    importlib.reload(default_config_module)

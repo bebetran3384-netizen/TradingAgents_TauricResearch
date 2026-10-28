@@ -28,6 +28,17 @@ _ENV_OVERRIDES = {
 }
 
 
+# One switch for the four categories that both yfinance and Alpha Vantage
+# serve, e.g. TRADINGAGENTS_DATA_VENDOR=alpha_vantage (or an ordered fallback
+# chain such as "alpha_vantage,yfinance"). Macro and prediction-market data
+# have a single vendor each and are left alone.
+_DATA_VENDOR_ENV = "TRADINGAGENTS_DATA_VENDOR"
+_DATA_VENDOR_CATEGORIES = (
+    "core_stock_apis", "technical_indicators", "fundamental_data", "news_data",
+)
+_DATA_VENDOR_CHOICES = ("alpha_vantage", "yfinance", "default")
+
+
 _BOOL_TRUE = ("true", "1", "yes", "on")
 _BOOL_FALSE = ("false", "0", "no", "off")
 
@@ -65,6 +76,18 @@ def _apply_env_overrides(config: dict) -> dict:
             config[key] = _coerce(raw, config.get(key))
         except ValueError as exc:
             raise ValueError(f"Invalid value for {env_var}: {exc}") from exc
+
+    chain = os.environ.get(_DATA_VENDOR_ENV, "").strip()
+    if chain:
+        vendors = [v.strip() for v in chain.split(",") if v.strip()]
+        unknown = [v for v in vendors if v not in _DATA_VENDOR_CHOICES]
+        if unknown or not vendors:
+            raise ValueError(
+                f"Invalid value for {_DATA_VENDOR_ENV}: expected a comma-separated "
+                f"chain of {'/'.join(_DATA_VENDOR_CHOICES)}, got {chain!r}"
+            )
+        for category in _DATA_VENDOR_CATEGORIES:
+            config["data_vendors"][category] = ",".join(vendors)
     return config
 
 
