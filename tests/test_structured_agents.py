@@ -97,6 +97,15 @@ class TestNullishFloatCoercion:
         )
         assert d.price_target is None
 
+    def test_pm_nullish_stop_loss_coerces_to_none(self):
+        d = PortfolioDecision(
+            rating=PortfolioRating.OVERWEIGHT,
+            executive_summary="s",
+            investment_thesis="t",
+            stop_loss="none",
+        )
+        assert d.stop_loss is None
+
 
 @pytest.mark.unit
 class TestRenderResearchPlan:

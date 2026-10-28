@@ -137,7 +137,9 @@ docker compose --profile ollama run --rm tradingagents-ollama
 
 ### Trading bot
 
-`tradingagents-bot` runs the full pipeline over a watchlist each weekday after the close and turns each rating into an Alpaca order: Buy targets 100% of `TRADING_BOT_MAX_POSITION_USD`, Overweight 75%, Hold leaves the position alone, Underweight trims to 25%, and Sell closes it. Bullish ratings only buy and bearish ratings only sell; every buy is capped by the total-exposure limit and available buying power. Orders submitted after the close queue for the next open.
+`tradingagents-bot` runs the full pipeline over a watchlist each weekday after the close and turns each rating into an Alpaca order: Buy targets 100% of `TRADING_BOT_MAX_POSITION_USD`, Overweight 75%, Hold leaves the position alone, Underweight trims to 25%, and Sell closes it. Bullish ratings only buy and bearish ratings only sell; every buy is capped by the total-exposure limit and available buying power. Orders are sized in whole shares and submitted after the close, so they fill at the next open.
+
+Every buy carries a protective stop-loss (an Alpaca one-triggers-other order, so the stop goes live as soon as the buy fills and stays good-till-cancelled). The stop is the Portfolio Manager's suggested stop when it gives one, but never further below the price than `TRADING_BOT_STOP_LOSS_PCT` (default 10%), which is also the fallback. Before trimming or closing, the bot cancels that ticker's open stop sells so the shares can be sold, then puts a fresh stop on whatever remains.
 
 It defaults to `dry_run`, which sends nothing. Set `TRADING_BOT_MODE=paper` with Alpaca keys to trade the paper account, and `TRADING_BOT_MODE=live` plus `TRADING_BOT_CONFIRM_LIVE=yes` for real money. See the `TRADING_BOT_*` block in `.env.example`.
 ```bash

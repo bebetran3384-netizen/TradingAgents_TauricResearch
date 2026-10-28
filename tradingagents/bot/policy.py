@@ -1,7 +1,12 @@
-"""Map a 5-tier rating to a position change, subject to the bot's risk caps."""
+"""Map a 5-tier rating to a position change, subject to the bot's risk caps.
+
+Orders are sized in whole shares: Alpaca only keeps a protective stop working
+across sessions (GTC) for whole-share quantities, and every bot buy carries one.
+"""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 # Fraction of max_position_usd to hold for each rating. ``None`` means "leave
@@ -22,15 +27,35 @@ _BEARISH = {"Underweight", "Sell"}
 class OrderPlan:
     symbol: str
     side: str  # "buy" or "sell"
-    notional_usd: float
+    qty: float
+    price: float
+    stop_price: float
     close_position: bool = False
     reason: str = ""
+
+    @property
+    def notional_usd(self) -> float:
+        return round(self.qty * self.price, 2)
+
+
+def protective_stop(price: float, suggested: float | None, max_loss_pct: float) -> float:
+    """Stop price for a long position bought at ``price``.
+
+    The Portfolio Manager's ``suggested`` stop is used when it sits below the
+    price, but never further away than ``max_loss_pct``: the PM can tighten
+    the bot's stop, not loosen it.
+    """
+    floor = price * (1 - max_loss_pct)
+    stop = suggested if suggested is not None and floor < suggested < price else floor
+    return math.floor(stop * 100) / 100
 
 
 def plan_order(
     symbol: str,
     rating: str,
-    current_value: float,
+    current_qty: float,
+    price: float,
+    stop_price: float,
     *,
     max_position_usd: float,
     min_trade_usd: float,
@@ -45,37 +70,42 @@ def plan_order(
     weight = TARGET_WEIGHTS.get(rating)
     if weight is None:
         return None, f"{rating}: no change"
-    if current_value < 0:
+    if current_qty < 0:
         return None, "short position held; bot only manages long positions"
 
+    current_value = current_qty * price
     target = weight * max_position_usd
     delta = target - current_value
 
     if rating in _BULLISH:
         if delta <= 0:
             return None, f"{rating}: already at or above target ${target:,.2f}"
-        capped = min(delta, exposure_headroom_usd, buying_power_usd)
-        if capped < min_trade_usd:
+        budget = min(delta, exposure_headroom_usd, buying_power_usd)
+        qty = math.floor(budget / price)
+        if qty < 1 or qty * price < min_trade_usd:
             return None, (
-                f"{rating}: buy ${delta:,.2f} wanted, ${capped:,.2f} allowed by caps "
-                f"(< ${min_trade_usd:,.2f} minimum)"
+                f"{rating}: ${budget:,.2f} allowed by caps buys {qty} share(s) at "
+                f"${price:,.2f} (< ${min_trade_usd:,.2f} minimum)"
             )
-        note = "" if capped == delta else f" (capped from ${delta:,.2f})"
-        return OrderPlan(symbol, "buy", round(capped, 2), reason=f"{rating}{note}"), (
-            f"{rating}: buy ${capped:,.2f} toward target ${target:,.2f}{note}"
+        plan = OrderPlan(symbol, "buy", qty, price, stop_price, reason=rating)
+        return plan, (
+            f"{rating}: buy {qty} @ ~${price:,.2f} (${plan.notional_usd:,.2f}) toward target "
+            f"${target:,.2f}, stop ${stop_price:,.2f}"
         )
 
     if rating in _BEARISH:
-        if current_value <= 0:
+        if current_qty <= 0:
             return None, f"{rating}: no position to reduce"
         if target == 0:
-            return OrderPlan(symbol, "sell", round(current_value, 2), True, rating), (
-                f"{rating}: close position (${current_value:,.2f})"
-            )
-        if -delta < min_trade_usd:
-            return None, f"{rating}: already at or below target ${target:,.2f}"
-        return OrderPlan(symbol, "sell", round(-delta, 2), reason=rating), (
-            f"{rating}: sell ${-delta:,.2f} down to target ${target:,.2f}"
+            plan = OrderPlan(symbol, "sell", current_qty, price, stop_price, True, rating)
+            return plan, f"{rating}: close position ({current_qty:g} shares)"
+        qty = math.floor(-delta / price)
+        if qty < 1 or qty * price < min_trade_usd:
+            return None, f"{rating}: already at or near target ${target:,.2f}"
+        plan = OrderPlan(symbol, "sell", qty, price, stop_price, reason=rating)
+        return plan, (
+            f"{rating}: sell {qty} @ ~${price:,.2f} down to target ${target:,.2f}, "
+            f"stop ${stop_price:,.2f} on the rest"
         )
 
     return None, f"unrecognised rating {rating!r}: no change"

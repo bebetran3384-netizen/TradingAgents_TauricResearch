@@ -34,6 +34,7 @@ class BotConfig:
     max_position_usd: float = 1000.0
     max_total_exposure_usd: float = 5000.0
     min_trade_usd: float = 50.0
+    stop_loss_pct: float = 0.10  # widest allowed stop, as a fraction below the price
     run_time: str = "16:30"
     timezone: str = "America/New_York"
     state_dir: Path = Path.home() / ".tradingagents" / "bot"
@@ -71,6 +72,7 @@ class BotConfig:
             max_position_usd=_float(env, "TRADING_BOT_MAX_POSITION_USD", 1000.0),
             max_total_exposure_usd=_float(env, "TRADING_BOT_MAX_TOTAL_EXPOSURE_USD", 5000.0),
             min_trade_usd=_float(env, "TRADING_BOT_MIN_TRADE_USD", 50.0),
+            stop_loss_pct=_float(env, "TRADING_BOT_STOP_LOSS_PCT", 10.0) / 100,
             run_time=env.get("TRADING_BOT_RUN_TIME", "16:30").strip(),
             timezone=env.get("TRADING_BOT_TIMEZONE", "America/New_York").strip(),
             state_dir=Path(state_dir).expanduser(),
@@ -101,6 +103,8 @@ class BotConfig:
                 raise BotConfigError(f"{name} must be positive")
         if self.min_trade_usd < 1:
             raise BotConfigError("min_trade_usd must be at least 1 (Alpaca's notional minimum)")
+        if not 0 < self.stop_loss_pct <= 0.5:
+            raise BotConfigError("TRADING_BOT_STOP_LOSS_PCT must be > 0 and <= 50 (percent)")
         if self.max_total_exposure_usd < self.max_position_usd:
             raise BotConfigError("max_total_exposure_usd must be >= max_position_usd")
         if not _RUN_TIME_RE.match(self.run_time):

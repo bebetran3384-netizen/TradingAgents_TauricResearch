@@ -7,5 +7,5 @@ the default ``dry_run`` mode never sends anything.
 """
 
 from tradingagents.bot.config import BotConfig
-from tradingagents.bot.policy import TARGET_WEIGHTS, OrderPlan, plan_order
-from tradingagents.bot.runner import run_once
+from tradingagents.bot.policy import TARGET_WEIGHTS, OrderPlan, plan_order, protective_stop
+from tradingagents.bot.runner import Analysis, run_once
