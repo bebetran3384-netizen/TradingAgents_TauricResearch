@@ -135,6 +135,17 @@ For local models with Ollama:
 docker compose --profile ollama run --rm tradingagents-ollama
 ```
 
+### Trading bot
+
+`tradingagents-bot` runs the full pipeline over a watchlist each weekday after the close and turns each rating into an Alpaca order: Buy targets 100% of `TRADING_BOT_MAX_POSITION_USD`, Overweight 75%, Hold leaves the position alone, Underweight trims to 25%, and Sell closes it. Bullish ratings only buy and bearish ratings only sell; every buy is capped by the total-exposure limit and available buying power. Orders submitted after the close queue for the next open.
+
+It defaults to `dry_run`, which sends nothing. Set `TRADING_BOT_MODE=paper` with Alpaca keys to trade the paper account, and `TRADING_BOT_MODE=live` plus `TRADING_BOT_CONFIRM_LIVE=yes` for real money. See the `TRADING_BOT_*` block in `.env.example`.
+```bash
+docker compose --profile bot up -d trading-bot          # daily schedule
+docker compose --profile bot run --rm trading-bot --once  # one pass now
+```
+Each ticker's outcome is appended to `~/.tradingagents/bot/journal.jsonl`; a ticker is traded at most once per day, and re-running a date retries only the tickers that errored. Create `~/.tradingagents/bot/STOP` to pause all trading.
+
 ### Required APIs
 
 TradingAgents supports multiple LLM providers. Set the API key for your chosen provider:

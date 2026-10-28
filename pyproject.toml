@@ -47,6 +47,7 @@ bedrock = [
 
 [project.scripts]
 tradingagents = "cli.main:app"
+tradingagents-bot = "tradingagents.bot.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["tradingagents*", "cli*"]

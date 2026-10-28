@@ -31,6 +31,19 @@ services:
     profiles:
       - ollama
 
+  # Scheduled trading bot. Behind a profile so a plain `docker compose up`
+  # never starts it: `docker compose --profile bot up -d trading-bot`.
+  trading-bot:
+    build: .
+    entrypoint: ["tradingagents-bot"]
+    env_file:
+      - .env
+    volumes:
+      - tradingagents_data:/home/appuser/.tradingagents
+    restart: unless-stopped
+    profiles:
+      - bot
+
 volumes:
   tradingagents_data:
   ollama_data:
