@@ -1,0 +1,27 @@
+{
+  "watchlist": [
+    {"symbol": "BTC-USD", "asset_type": "crypto"},
+    {"symbol": "ETH-USD", "asset_type": "crypto"},
+    {"symbol": "SOL-USD", "asset_type": "crypto"}
+  ],
+  "llm_provider": "chatgpt",
+  "deep_think_llm": "gpt-6-sol",
+  "quick_think_llm": "gpt-6-luna",
+
+  "base_allocation_usd": 100,
+  "max_total_exposure_usd": 300,
+  "max_order_usd": 150,
+  "min_order_usd": 5,
+  "cash_buffer_usd": 10,
+
+  "target_weights": {
+    "Buy": 1.0,
+    "Overweight": 0.5,
+    "Hold": null,
+    "Underweight": 0.25,
+    "Sell": 0.0
+  },
+
+  "portfolio_id": null,
+  "state_dir": "~/.tradingbot"
+}
