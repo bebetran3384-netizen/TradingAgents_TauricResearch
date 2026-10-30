@@ -1,8 +1,11 @@
-"""Where orders go: a local paper account, or Coinbase with real money.
+"""Where orders go: a local paper account, Robinhood, or Coinbase with real money.
+
+The Robinhood broker places nothing itself: it reads an account snapshot and
+queues orders in a file, which Claude places through its Robinhood connector,
+and each order then waits for your approval in the Robinhood app.
 
 The Coinbase Advanced Trade SDK trades spot crypto only, so in live mode stock
-orders are not sent: they are returned as "manual" for you to place yourself
-(or through Claude's Coinbase connector, which asks you to approve each one).
+orders are not sent: they are returned as "manual" for you to place yourself.
 """
 
 from __future__ import annotations
@@ -46,6 +49,40 @@ class PaperBroker:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.book, indent=2))
         return {"status": "filled (paper)", "stop": order.stop}
+
+
+class RobinhoodQueueBroker:
+    """Reads cash and positions from a snapshot and queues orders for approval.
+
+    The snapshot is JSON: {"cash": 659.91, "positions": {"BTC-USD": 0.001, "M-USD": 2}},
+    keyed by the same product ids the planner uses. Queued orders carry the
+    Robinhood symbol (a bare ticker for stocks, BASE-USD for crypto) and the stop
+    to place once the buy fills.
+    """
+
+    def __init__(self, snapshot: Path, queue: Path):
+        if not snapshot.exists():
+            raise RuntimeError(f"No Robinhood account snapshot at {snapshot}.")
+        self.book = json.loads(snapshot.read_text())
+        self.queue = queue
+        self.queue.write_text("[]")
+
+    def cash(self) -> float:
+        return float(self.book["cash"])
+
+    def positions(self) -> dict[str, float]:
+        return {k: float(v) for k, v in self.book.get("positions", {}).items()}
+
+    def place(self, order: Order) -> dict:
+        symbol = order.product_id
+        if order.asset_type != "crypto":
+            symbol = symbol.removesuffix("-USD")
+        entry = {"ref_id": str(uuid.uuid4()), "symbol": symbol, **order.to_dict(),
+                 "status": "queued"}
+        queued = json.loads(self.queue.read_text())
+        queued.append(entry)
+        self.queue.write_text(json.dumps(queued, indent=2))
+        return {"status": "queued for approval", "ref_id": entry["ref_id"]}
 
 
 class CoinbaseBroker:

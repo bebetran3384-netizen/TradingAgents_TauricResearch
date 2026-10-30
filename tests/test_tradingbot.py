@@ -103,3 +103,29 @@ def test_paper_broker_round_trip(tmp_path):
     b.place(Order("M-USD", "stock", "SELL", 60, 5, 12))
     saved = json.loads(book.read_text())
     assert saved == {"cash": 110, "positions": {}}
+
+
+@pytest.mark.unit
+def test_robinhood_queue_broker(tmp_path):
+    from tradingbot.brokers import RobinhoodQueueBroker
+    from tradingbot.planner import Order
+
+    snap = tmp_path / "robinhood_account.json"
+    snap.write_text(json.dumps({"cash": 659.91, "positions": {"BTC-USD": 0.001}}))
+    queue = tmp_path / "queue.json"
+    b = RobinhoodQueueBroker(snap, queue)
+    assert b.cash() == 659.91 and b.positions() == {"BTC-USD": 0.001}
+
+    b.place(Order("ETH-USD", "crypto", "BUY", 100, 0.04, 2500, stop=2300))
+    b.place(Order("M-USD", "stock", "SELL", 50, 2, 25))
+    eth, m = json.loads(queue.read_text())
+    assert (eth["symbol"], eth["stop"], eth["status"]) == ("ETH-USD", 2300, "queued")
+    assert m["symbol"] == "M" and eth["ref_id"] != m["ref_id"]
+
+
+@pytest.mark.unit
+def test_robinhood_queue_broker_needs_snapshot(tmp_path):
+    from tradingbot.brokers import RobinhoodQueueBroker
+
+    with pytest.raises(RuntimeError, match="snapshot"):
+        RobinhoodQueueBroker(tmp_path / "missing.json", tmp_path / "queue.json")

@@ -7,6 +7,7 @@ target, and places the orders that move toward it, inside hard limits.
 cp tradingbot/config.example.json tradingbot/config.json   # then edit
 python -m tradingbot --config tradingbot/config.json             # paper account
 python -m tradingbot --config tradingbot/config.json --plan-only # analyze, place nothing
+python -m tradingbot --config tradingbot/config.json --robinhood # queue for Robinhood
 TRADINGBOT_LIVE=yes python -m tradingbot --config tradingbot/config.json --live
 ```
 
@@ -22,6 +23,15 @@ entry.
 
 **Paper mode** (default) keeps a local account in `~/.tradingbot/paper.json`,
 starting from `paper_starting_cash` (default 1000).
+
+**Robinhood mode** (`--robinhood`) needs no API key. Before a run, Claude reads
+your Robinhood account through its connector and writes
+`~/.tradingbot/robinhood_account.json` (`{"cash": ..., "positions": {"BTC-USD": ...}}`).
+The bot plans against it and writes the orders to
+`~/.tradingbot/runs/<date>/robinhood_queue.json` without placing anything. Claude
+then sends each order through the connector, and it waits for your approval in
+the Robinhood app; after a buy fills, the agents' stop goes in the same way.
+Stocks and crypto both work.
 
 **Live mode** places real orders on Coinbase through the Advanced Trade API. It
 needs both `--live` and `TRADINGBOT_LIVE=yes`, plus `COINBASE_API_KEY` and

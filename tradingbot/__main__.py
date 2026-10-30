@@ -2,7 +2,12 @@
 
     python -m tradingbot --config tradingbot/config.json            # paper (default)
     python -m tradingbot --config tradingbot/config.json --plan-only
+    python -m tradingbot --config tradingbot/config.json --robinhood  # queue for approval
     TRADINGBOT_LIVE=yes python -m tradingbot --config ... --live      # real money
+
+--robinhood reads ~/.tradingbot/robinhood_account.json and writes the orders to
+runs/<date>/robinhood_queue.json; nothing is placed until each order is sent
+through the Robinhood connector and approved in the Robinhood app.
 
 Live mode needs both the --live flag and TRADINGBOT_LIVE=yes, so neither a
 stray flag nor a stray environment variable can spend money alone.
@@ -18,7 +23,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from tradingbot.brokers import CoinbaseBroker, PaperBroker
+from tradingbot.brokers import CoinbaseBroker, PaperBroker, RobinhoodQueueBroker
 from tradingbot.planner import plan_orders
 from tradingbot.signals import run_signal
 
@@ -28,7 +33,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--config", required=True)
     ap.add_argument("--date", default=dt.date.today().isoformat())
     ap.add_argument("--plan-only", action="store_true", help="analyze and plan, place nothing")
-    ap.add_argument("--live", action="store_true", help="real orders on Coinbase")
+    brokers = ap.add_mutually_exclusive_group()
+    brokers.add_argument("--live", action="store_true", help="real orders on Coinbase")
+    brokers.add_argument("--robinhood", action="store_true",
+                         help="queue orders for approval in Robinhood")
     args = ap.parse_args(argv)
 
     cfg = json.loads(Path(args.config).read_text())
@@ -41,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
             print("Refusing live mode: set TRADINGBOT_LIVE=yes as well as --live.", file=sys.stderr)
             return 2
         broker = CoinbaseBroker(cfg.get("portfolio_id"))
+    elif args.robinhood:
+        broker = RobinhoodQueueBroker(state_dir / "robinhood_account.json",
+                                      run_dir / "robinhood_queue.json")
     else:
         broker = PaperBroker(state_dir / "paper.json", float(cfg.get("paper_starting_cash", 1000)))
 
@@ -62,7 +73,8 @@ def main(argv: list[str] | None = None) -> int:
 
     for k in plan.skipped:
         print(f"  skip {k.product_id}: {k.reason}")
-    mode = "plan only" if args.plan_only else "LIVE" if args.live else "paper"
+    mode = ("plan only" if args.plan_only else "LIVE" if args.live
+            else "robinhood" if args.robinhood else "paper")
     with open(state_dir / "journal.jsonl", "a") as journal:
         for o in plan.orders:
             result = {"status": "planned"} if args.plan_only else broker.place(o)
